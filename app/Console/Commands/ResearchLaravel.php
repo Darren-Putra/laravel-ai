@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use App\Models\LaravelKnowledge;
-use OpenAI\Client as OpenAIClient;
+use OpenAI;
 
 class ResearchLaravel extends Command
 {
@@ -15,10 +15,11 @@ class ResearchLaravel extends Command
     public function handle()
     {
         // 🔑 OpenAI-compatible client (LM Studio via ngrok)
-        $client = new OpenAIClient([
-            'api_key'  => 'lm-studio', // dummy, LM Studio tidak cek
-            'base_uri' => env('OPENAI_BASE_URL'), // contoh: https://xxxx.ngrok-free.app/v1
-        ]);
+        $client = OpenAI::factory()
+        ->withApiKey('lm-studio') // dummy
+        ->withBaseUri(env('OPENAI_BASE_URL')) // https://xxxx.ngrok-free.app/v1
+        ->make();
+    
 
         $url = $this->argument('url');
         $embeddedCount = 0;
@@ -49,10 +50,10 @@ class ResearchLaravel extends Command
         foreach ($chunks as $index => $chunk) {
             try {
                 $response = $client->embeddings()->create([
-                    // GANTI sesuai model embedding LM Studio kamu
-                    'model' => 'nomic-embed-text',
+                    'model' => 'nomic-embed-text', // HARUS model embedding
                     'input' => $chunk,
                 ]);
+                
 
                 // LM Studio → response ARRAY
                 if (!isset($response['data'][0]['embedding'])) {
