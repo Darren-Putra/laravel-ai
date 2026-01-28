@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use App\Models\LaravelKnowledge;
-use OpenAI\Laravel\Facades\OpenAI;
+use OpenAI\Client as OpenAIClient;
 
 class ResearchLaravel extends Command
 {
@@ -14,85 +14,85 @@ class ResearchLaravel extends Command
 
     public function handle()
     {
+        // 🔑 OpenAI-compatible client (LM Studio via ngrok)
+        $client = new OpenAIClient([
+            'api_key'  => 'lm-studio', // dummy, LM Studio tidak cek
+            'base_uri' => env('OPENAI_BASE_URL'), // contoh: https://xxxx.ngrok-free.app/v1
+        ]);
+
         $url = $this->argument('url');
         $embeddedCount = 0;
 
-        // 1. Ambil data
-        $response = \Illuminate\Support\Facades\Http::get($url);
+        // 1. Ambil HTML
+        $response = Http::withHeaders([
+            'User-Agent' => 'Mozilla/5.0',
+        ])->timeout(30)->get($url);
+
         if (!$response->successful()) {
             $this->error("Gagal akses URL");
-            return 1; // <--- KODE ERROR
+            return 1;
         }
 
+        // 2. Bersihkan teks
         $cleanText = strip_tags($response->body());
         $cleanText = preg_replace('/\s+/', ' ', $cleanText);
 
         if (strlen($cleanText) < 100) {
             $this->error("Konten terlalu sedikit, AI tidak dipanggil.");
-            return 1; // ✅ GAGAL
+            return 1;
         }
-
 
         $chunks = str_split($cleanText, 1000);
         $newData = [];
 
-        // ... (kode looping embedding kamu) ...
+        // 3. Embedding
         foreach ($chunks as $index => $chunk) {
             try {
-                $response = OpenAI::client()->embeddings()->create([
-                    'model' => 'text-embedding-3-small', // atau model lokal kamu
+                $response = $client->embeddings()->create([
+                    // GANTI sesuai model embedding LM Studio kamu
+                    'model' => 'nomic-embed-text',
                     'input' => $chunk,
                 ]);
-                
-                if (
-                    !isset($response['data']) ||
-                    !isset($response['data'][0]) ||
-                    !isset($response['data'][0]['embedding'])
-                ) {
+
+                // LM Studio → response ARRAY
+                if (!isset($response['data'][0]['embedding'])) {
                     $this->error('Response embedding tidak valid');
-                    $this->error(json_encode($response, JSON_PRETTY_PRINT));
+                    $this->line(json_encode($response, JSON_PRETTY_PRINT));
                     return 1;
                 }
-                
+
                 $embedding = $response['data'][0]['embedding'];
-                
-                
-        
+
                 $newData[] = [
-                    'url' => $url,
-                    'title' => 'Laravel Docs',
+                    'url'     => $url,
+                    'title'   => 'Laravel Docs',
                     'content' => $chunk,
-                    'vector' => $embedding,
+                    'vector'  => $embedding,
                 ];
-        
+
                 $embeddedCount++;
                 $this->info("Embedding chunk #" . ($index + 1));
-        
-            } catch (\Exception $e) {
+
+            } catch (\Throwable $e) {
                 $this->error("Gagal embedding: " . $e->getMessage());
                 return 1;
             }
         }
-        
-
 
         if ($embeddedCount === 0) {
             $this->error("AI tidak menghasilkan embedding sama sekali");
-            return 1; // ❌ WAJIB GAGAL
-        }
-        
-        // 2. Simpan ke Database
-        if (!empty($newData)) {
-            \DB::transaction(function () use ($url, $newData) {
-                \App\Models\LaravelKnowledge::where('url', $url)->delete();
-                foreach ($newData as $data) {
-                    \App\Models\LaravelKnowledge::create($data);
-                }
-            });
-            $this->info("Berhasil menyerap: $url");
-            return 0; // <--- KODE SUKSES
+            return 1;
         }
 
-        return 1; // <--- Gagal karena tidak ada data yang siap
+        // 4. Simpan ke DB
+        \DB::transaction(function () use ($url, $newData) {
+            LaravelKnowledge::where('url', $url)->delete();
+            foreach ($newData as $data) {
+                LaravelKnowledge::create($data);
+            }
+        });
+
+        $this->info("Berhasil menyerap ($embeddedCount chunk): $url");
+        return 0;
     }
 }
