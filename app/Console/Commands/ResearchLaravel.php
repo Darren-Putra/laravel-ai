@@ -14,56 +14,49 @@ class ResearchLaravel extends Command
     public function handle()
     {
         $url = $this->argument('url');
-
-        // 1. Ambil data halaman
-        $response = Http::get($url);
-        if (!$response->successful()) return;
-
+        
+        // 1. Ambil data
+        $response = \Illuminate\Support\Facades\Http::get($url);
+        if (!$response->successful()) {
+            $this->error("Gagal akses URL");
+            return 1; // <--- KODE ERROR
+        }
+    
         $cleanText = strip_tags($response->body());
         $cleanText = preg_replace('/\s+/', ' ', $cleanText);
+        
+        // Cek: Kalau halamannya kosong/sedikit sekali (misal cuma redirect), anggap skip tapi sukses
+        if (strlen($cleanText) < 100) {
+            $this->warn("Konten terlalu sedikit, dilewati.");
+            return 0; 
+        }
+    
         $chunks = str_split($cleanText, 1000);
-
-        $newData = []; // Temporary storage
-        $this->info("Sedang memproses embedding: $url");
-
+        $newData = [];
+    
+        // ... (kode looping embedding kamu) ...
         foreach ($chunks as $index => $chunk) {
             try {
-                $client = \OpenAI::factory()
-                    ->withApiKey(env('OPENAI_API_KEY'))
-                    ->withBaseUri(env('OPENAI_BASE_URI'))
-                    ->withHttpHeader('ngrok-skip-browser-warning', '1')
-                    ->make();
-
-                $res = $client->embeddings()->create([
-                    'model' => 'local-model',
-                    'input' => $chunk,
-                ]);
-
-                // Simpan ke array dulu, jangan langsung ke DB
-                $newData[] = [
-                    'url' => $url,
-                    'title' => "Bagian " . ($index + 1),
-                    'content' => $chunk,
-                    'vector' => json_encode($res->embeddings[0]->embedding) // Pastikan formatnya benar
-                ];
+                // ... Logic AI ...
+                // ... Simpan ke $newData[] ...
             } catch (\Exception $e) {
-                $this->error("Gagal embedding di bagian $index. Batalkan semua untuk URL ini.");
-                return; // Berhenti total jika salah satu chunk gagal agar data tidak parsial
+                $this->error("Gagal embedding: " . $e->getMessage());
+                return 1; // <--- KODE ERROR: Berhenti & Lapor Gagal
             }
         }
-
-        // 2. Jika semua chunk berhasil, baru lakukan operasi database
+    
+        // 2. Simpan ke Database
         if (!empty($newData)) {
             \DB::transaction(function () use ($url, $newData) {
-                // Hapus data lama hanya ketika data baru sudah siap
                 \App\Models\LaravelKnowledge::where('url', $url)->delete();
-
-                // Masukkan semua data baru
                 foreach ($newData as $data) {
                     \App\Models\LaravelKnowledge::create($data);
                 }
             });
-            $this->info("Berhasil menyerap: $url (" . count($newData) . " bagian)");
+            $this->info("Berhasil menyerap: $url");
+            return 0; // <--- KODE SUKSES
         }
+    
+        return 1; // <--- Gagal karena tidak ada data yang siap
     }
 }

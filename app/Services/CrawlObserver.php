@@ -31,37 +31,41 @@ class CrawlObserver extends BaseObserver
             return;
         }
 
-        if ($response->getStatusCode() === 200) {
-            // Memberi tahu user URL mana yang sedang dihajar
-            $this->output->writeln("<info>[Processing]</info> Sedang menyerap: $urlStr");
+// Di dalam method crawled()
 
-            try {
-                // Tandai sedang diproses agar tidak bentrok
-                DB::table('crawl_tasks')->updateOrInsert(
-                    ['url' => $urlStr],
-                    ['status' => 'processing', 'updated_at' => now()]
-                );
+// ...
+if ($response->getStatusCode() === 200) {
+    $this->output->writeln("<info>[Processing]</info> Sedang menyerap: $urlStr");
 
-                // Panggil command research (yang tadi sudah pakai transaksi DB)
-                Artisan::call('laravel-ai:research', ['url' => $urlStr]);
+    // Update status jadi processing
+    DB::table('crawl_tasks')->updateOrInsert(
+        ['url' => $urlStr],
+        ['status' => 'processing', 'updated_at' => now()]
+    );
 
-                // Tandai selesai
-                DB::table('crawl_tasks')->where('url', $urlStr)->update([
-                    'status' => 'completed',
-                    'updated_at' => now()
-                ]);
+    // --- PERUBAHAN DISINI ---
+    // Tampung hasil kerjanya (Exit Code)
+    $exitCode = Artisan::call('laravel-ai:research', ['url' => $urlStr]);
 
-                $this->output->writeln("<info>[Success]</info> Selesai: $urlStr");
-
-            } catch (\Exception $e) {
-                DB::table('crawl_tasks')->where('url', $urlStr)->update([
-                    'status' => 'failed',
-                    'last_error' => $e->getMessage(),
-                    'updated_at' => now()
-                ]);
-                $this->output->writeln("<error>[Error]</error> Gagal pada $urlStr: " . $e->getMessage());
-            }
-        }
+    if ($exitCode === 0) {
+        // HANYA jika exitCode 0 (Sukses), baru tandai completed
+        DB::table('crawl_tasks')->where('url', $urlStr)->update([
+            'status' => 'completed',
+            'updated_at' => now()
+        ]);
+        $this->output->writeln("<info>[Success]</info> Selesai: $urlStr");
+    } else {
+        // Jika exitCode 1 (Gagal), tandai failed
+        DB::table('crawl_tasks')->where('url', $urlStr)->update([
+            'status' => 'failed',
+            'last_error' => 'Research Command returned failure code',
+            'updated_at' => now()
+        ]);
+        $this->output->writeln("<error>[Failed]</error> Gagal memproses konten: $urlStr");
+    }
+    // ------------------------
+}
+// ...
     }
 
     public function crawlFailed(
