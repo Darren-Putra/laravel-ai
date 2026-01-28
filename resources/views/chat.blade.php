@@ -59,8 +59,12 @@
                 userInput: '',
                 loading: false,
                 messages: [
-                    { role: 'assistant', content: 'Halo! Saya sudah mempelajari dokumentasi Laravel di database kamu. Ada yang bisa saya bantu?' }
+                    {
+                        role: 'assistant',
+                        content: 'Halo! Saya sudah mempelajari dokumentasi Laravel di database kamu. Ada yang bisa saya bantu?'
+                    }
                 ],
+
                 async sendMessage() {
                     if (!this.userInput.trim()) return;
 
@@ -69,27 +73,38 @@
                     this.userInput = '';
                     this.loading = true;
 
-                    // Scroll ke bawah
-                    this.$nextTick(() => { document.getElementById('chat-window').scrollTo(0, 100000); });
+                    this.$nextTick(() => {
+                        document.getElementById('chat-window').scrollTo(0, 100000);
+                    });
 
                     try {
                         const response = await fetch(`/tanya-ai?q=${encodeURIComponent(userMsg)}`);
                         const data = await response.json();
 
-                        this.messages.push({ role: 'assistant', content: data.jawaban });
+                        this.messages.push({
+                            role: 'assistant',
+                            content: data.jawaban
+                        });
                     } catch (error) {
-                        this.messages.push({ role: 'assistant', content: 'Error: Gagal terhubung ke server.' });
+                        this.messages.push({
+                            role: 'assistant',
+                            content: 'Error: Gagal terhubung ke server.'
+                        });
                     } finally {
                         this.loading = false;
-                        this.$nextTick(() => { document.getElementById('chat-window').scrollTo(0, 100000); });
+                        this.$nextTick(() => {
+                            document.getElementById('chat-window').scrollTo(0, 100000);
+                        });
                     }
-                }
+                },
+
                 renderMarkdown(content) {
                     return marked.parse(content ?? '');
-                },
+                }
             }
         }
     </script>
+
 </body>
 
 </html>
