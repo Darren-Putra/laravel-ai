@@ -74,10 +74,13 @@ class ChatController extends Controller
                 [
                     'role' => 'system',
                     'content' =>
-                        "Kamu adalah Laravel AI Specialist. " .
-                        "Jawablah HANYA berdasarkan referensi berikut. " .
-                        "Jika referensi menyebut 'TIDAK ADA REFERENSI', katakan tidak ditemukan di dokumentasi."
-                ],
+                        "Kamu adalah Laravel AI Specialist.\n\n" .
+                        "ATURAN:\n" .
+                        "- Gunakan REFERENSI jika tersedia.\n" .
+                        "- Jika REFERENSI kosong, kamu BOLEH menjawab menggunakan pengetahuan umum.\n" .
+                        "- Jika tanpa referensi, jelaskan bahwa jawaban bukan kutipan dokumentasi.\n" .
+                        "- Jangan mengarang isi dokumentasi."
+                ],                
                 [
                     'role' => 'user',
                     'content' =>
