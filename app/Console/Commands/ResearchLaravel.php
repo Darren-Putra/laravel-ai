@@ -16,10 +16,10 @@ class ResearchLaravel extends Command
     {
         // 🔑 OpenAI-compatible client (LM Studio via ngrok)
         $client = OpenAI::factory()
-        ->withApiKey('lm-studio') // dummy
-        ->withBaseUri(env('OPENAI_BASE_URL')) // https://xxxx.ngrok-free.app/v1
-        ->make();
-    
+            ->withApiKey('lm-studio') // dummy
+            ->withBaseUri(env('OPENAI_BASE_URL')) // https://xxxx.ngrok-free.app/v1
+            ->make();
+
 
         $url = $this->argument('url');
         $embeddedCount = 0;
@@ -53,7 +53,7 @@ class ResearchLaravel extends Command
                     'model' => 'nomic-embed-text', // HARUS model embedding
                     'input' => $chunk,
                 ]);
-                
+
 
                 // LM Studio → response ARRAY
                 if (!isset($response['data'][0]['embedding'])) {
@@ -66,14 +66,15 @@ class ResearchLaravel extends Command
 
                 $newData[] = [
                     'url'     => $url,
+                    'source'  => $this->detectSource($url), // 👈 DI SINI
                     'title'   => 'Laravel Docs',
                     'content' => $chunk,
                     'vector'  => $embedding,
                 ];
 
+
                 $embeddedCount++;
                 $this->info("Embedding chunk #" . ($index + 1));
-
             } catch (\Throwable $e) {
                 $this->error("Gagal embedding: " . $e->getMessage());
                 return 1;
@@ -93,7 +94,24 @@ class ResearchLaravel extends Command
             }
         });
 
+
         $this->info("Berhasil menyerap ($embeddedCount chunk): $url");
         return 0;
+    }
+    private function detectSource(string $url): string
+    {
+        if (str_contains($url, 'livewire.laravel.com')) {
+            return 'livewire';
+        }
+
+        if (str_contains($url, '/docs/12.x')) {
+            return 'laravel-12';
+        }
+
+        if (str_contains($url, '/docs/11.x')) {
+            return 'laravel-11';
+        }
+
+        return 'unknown';
     }
 }

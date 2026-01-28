@@ -6,8 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class LaravelKnowledge extends Model
 {
-    protected $fillable = ['url', 'title', 'content', 'vector'];
-
+    protected $fillable = ['url', 'source', 'title', 'content', 'vector'];
     protected $casts = [
         'vector' => 'array',
     ];

@@ -19,16 +19,44 @@ class ChatController extends Controller
             ]);
         }
 
-        // 1️⃣ Client LM Studio (NGROK)
+        // =========================
+        // 1️⃣ NORMALISASI PERTANYAAN
+        // =========================
+        $qRaw = strtolower($userQuestion);
+        $q = preg_replace('/[^a-z0-9\s]/', ' ', $qRaw);
+        $q = preg_replace('/\s+/', ' ', $q);
+
+        // =========================
+        // 2️⃣ DETEKSI SOURCE (HYBRID)
+        // =========================
+        $sources = [];
+
+        if (preg_match('/\blivewire\b/', $q)) {
+            $sources[] = 'livewire';
+        }
+
+        if (preg_match('/\blaravel\s*v?\s*12\b/', $q)) {
+            $sources[] = 'laravel-12';
+        }
+
+        if (preg_match('/\blaravel\s*v?\s*11\b/', $q)) {
+            $sources[] = 'laravel-11';
+        }
+
+        // =========================
+        // 3️⃣ CLIENT LM STUDIO
+        // =========================
         $client = OpenAI::factory()
-            ->withApiKey('lm-studio') // dummy
+            ->withApiKey('lm-studio')
             ->withBaseUri(env('OPENAI_BASE_URL'))
             ->withHttpHeader('ngrok-skip-browser-warning', '1')
             ->make();
 
-        // 2️⃣ Embedding pertanyaan user (MODEL EMBEDDING)
+        // =========================
+        // 4️⃣ EMBEDDING PERTANYAAN
+        // =========================
         $embedResponse = $client->embeddings()->create([
-            'model' => 'nomic-embed-text', // ✅ model embedding
+            'model' => 'nomic-embed-text',
             'input' => $userQuestion,
         ]);
 
@@ -40,8 +68,16 @@ class ChatController extends Controller
 
         $questionVector = $embedResponse['data'][0]['embedding'];
 
-        // 3️⃣ Filter awal (FULLTEXT)
-        $filteredData = LaravelKnowledge::query()
+        // =========================
+        // 5️⃣ QUERY DATABASE (RAG)
+        // =========================
+        $query = LaravelKnowledge::query();
+
+        if (!empty($sources)) {
+            $query->whereIn('source', $sources);
+        }
+
+        $filteredData = $query
             ->whereRaw(
                 "MATCH(content) AGAINST(? IN NATURAL LANGUAGE MODE)",
                 [$userQuestion]
@@ -49,7 +85,9 @@ class ChatController extends Controller
             ->limit(50)
             ->get();
 
-        // 4️⃣ Ranking cosine similarity
+        // =========================
+        // 6️⃣ COSINE SIMILARITY
+        // =========================
         $matches = $filteredData->map(function ($item) use ($questionVector, $aiService) {
                 $item->similarity = $aiService->cosineSimilarity(
                     $questionVector,
@@ -62,14 +100,20 @@ class ChatController extends Controller
             ->take(3)
             ->values();
 
-        // 5️⃣ Context
+        // =========================
+        // 7️⃣ CONTEXT
+        // =========================
         $context = $matches->isEmpty()
             ? "TIDAK ADA REFERENSI RELEVAN DI DATABASE."
-            : $matches->pluck('content')->implode("\n---\n");
+            : $matches->map(function ($m) {
+                return "[{$m->source}]\n{$m->content}";
+            })->implode("\n---\n");
 
-        // 6️⃣ Chat completion (MODEL CHAT)
+        // =========================
+        // 8️⃣ CHAT COMPLETION
+        // =========================
         $chatResponse = $client->chat()->create([
-            'model' => 'your-chat-model', // contoh: llama3, mistral, qwen
+            'model' => 'your-chat-model', // llama3 / mistral / qwen
             'messages' => [
                 [
                     'role' => 'system',
@@ -78,9 +122,9 @@ class ChatController extends Controller
                         "ATURAN:\n" .
                         "- Gunakan REFERENSI jika tersedia.\n" .
                         "- Jika REFERENSI kosong, kamu BOLEH menjawab menggunakan pengetahuan umum.\n" .
-                        "- Jika tanpa referensi, jelaskan bahwa jawaban bukan kutipan dokumentasi.\n" .
+                        "- Jika jawaban berasal dari lebih dari satu sumber (misalnya Livewire dan Laravel 12), gabungkan dengan jelas.\n" .
                         "- Jangan mengarang isi dokumentasi."
-                ],                
+                ],
                 [
                     'role' => 'user',
                     'content' =>
@@ -94,6 +138,7 @@ class ChatController extends Controller
 
         return response()->json([
             'jawaban'        => $answer,
+            'detected_source'=> $sources,
             'source_count'   => $matches->count(),
             'top_similarity' => $matches->first()->similarity ?? 0,
         ]);

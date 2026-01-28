@@ -65,43 +65,67 @@
                     }
                 ],
 
+                $query = LaravelKnowledge:: query();
+
+$q = strtolower($userQuestion);
+                $sources =[];
+
+                // Deteksi source dari pertanyaan
+                if(str_contains($q, 'livewire')) {
+                $sources[] = 'livewire';
+            }
+
+            if (str_contains($q, 'laravel 12')) {
+                $sources[] = 'laravel-12';
+            }
+
+            if (str_contains($q, 'laravel 11')) {
+                $sources[] = 'laravel-11';
+            }
+
+            // Jika ada source terdeteksi → filter
+            if (!empty($sources)) {
+                $query -> whereIn('source', $sources);
+            }
+
+
                 async sendMessage() {
-                    if (!this.userInput.trim()) return;
+                if (!this.userInput.trim()) return;
 
-                    const userMsg = this.userInput;
-                    this.messages.push({ role: 'user', content: userMsg });
-                    this.userInput = '';
-                    this.loading = true;
+                const userMsg = this.userInput;
+                this.messages.push({ role: 'user', content: userMsg });
+                this.userInput = '';
+                this.loading = true;
 
+                this.$nextTick(() => {
+                    document.getElementById('chat-window').scrollTo(0, 100000);
+                });
+
+                try {
+                    const response = await fetch(`/tanya-ai?q=${encodeURIComponent(userMsg)}`);
+                    const data = await response.json();
+
+                    this.messages.push({
+                        role: 'assistant',
+                        content: data.jawaban
+                    });
+                } catch (error) {
+                    this.messages.push({
+                        role: 'assistant',
+                        content: 'Error: Gagal terhubung ke server.'
+                    });
+                } finally {
+                    this.loading = false;
                     this.$nextTick(() => {
                         document.getElementById('chat-window').scrollTo(0, 100000);
                     });
-
-                    try {
-                        const response = await fetch(`/tanya-ai?q=${encodeURIComponent(userMsg)}`);
-                        const data = await response.json();
-
-                        this.messages.push({
-                            role: 'assistant',
-                            content: data.jawaban
-                        });
-                    } catch (error) {
-                        this.messages.push({
-                            role: 'assistant',
-                            content: 'Error: Gagal terhubung ke server.'
-                        });
-                    } finally {
-                        this.loading = false;
-                        this.$nextTick(() => {
-                            document.getElementById('chat-window').scrollTo(0, 100000);
-                        });
-                    }
-                },
-
-                renderMarkdown(content) {
-                    return marked.parse(content ?? '');
                 }
+            },
+
+            renderMarkdown(content) {
+                return marked.parse(content ?? '');
             }
+        }
         }
     </script>
 
