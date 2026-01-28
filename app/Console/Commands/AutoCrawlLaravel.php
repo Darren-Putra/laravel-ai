@@ -19,6 +19,10 @@ class AutoCrawlLaravel extends Command
         $targetUrl = 'https://laravel.com/docs/11.x';
         $this->info("Robot mulai berjalan dari: $targetUrl");
 
+
+        set_time_limit(0); // 0 artinya tidak ada batas waktu
+        ini_set('memory_limit', '512M'); // Naikkan limit memori jika diizinkan server
+        
         Crawler::create()
             ->setCrawlObserver(new CrawlObserver())
             // --- TAMBAHKAN DUA BARIS INI ---
