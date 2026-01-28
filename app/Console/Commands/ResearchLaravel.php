@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use App\Models\LaravelKnowledge;
-use OpenAI;
+use OpenAI\Laravel\Facades\OpenAI;
 
 class ResearchLaravel extends Command
 {
