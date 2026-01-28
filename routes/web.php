@@ -11,19 +11,6 @@ Route::get('/tanya-ai', [ChatController::class, 'ask']);
 
 
 
-// Fungsi pembantu untuk menghitung kemiripan angka
-function cosineSimilarity($vec1, $vec2) {
-    $dotProduct = 0;
-    $normA = 0;
-    $normB = 0;
-    foreach ($vec1 as $i => $val) {
-        $dotProduct += $val * ($vec2[$i] ?? 0);
-        $normA += $val ** 2;
-        $normB += ($vec2[$i] ?? 0) ** 2;
-    }
-    return $dotProduct / (sqrt($normA) * sqrt($normB));
-}
-
 
 Route::get('/tes-ai', function () {
     // 1. Ambil data dari .env

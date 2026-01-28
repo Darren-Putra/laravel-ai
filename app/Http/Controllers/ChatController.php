@@ -11,59 +11,88 @@ class ChatController extends Controller
 {
     public function ask(Request $request, AiService $aiService)
     {
-        $userQuestion = $request->query('q', 'Apa itu Laravel?');
+        $userQuestion = $request->query('q');
 
-        // 1. Inisialisasi Client AI
+        if (!$userQuestion) {
+            return response()->json([
+                'jawaban' => 'Pertanyaan kosong.'
+            ]);
+        }
+
+        // 1️⃣ Client LM Studio (NGROK)
         $client = OpenAI::factory()
-            ->withApiKey(env('OPENAI_API_KEY'))
-            ->withBaseUri(env('OPENAI_BASE_URI'))
+            ->withApiKey('lm-studio') // dummy
+            ->withBaseUri(env('OPENAI_BASE_URL'))
             ->withHttpHeader('ngrok-skip-browser-warning', '1')
             ->make();
 
-        // 2. Ubah pertanyaan jadi Vector
-        $qResponse = $client->embeddings()->create([
-            'model' => 'local-model',
+        // 2️⃣ Embedding pertanyaan user (MODEL EMBEDDING)
+        $embedResponse = $client->embeddings()->create([
+            'model' => 'nomic-embed-text', // ✅ model embedding
             'input' => $userQuestion,
         ]);
-        $questionVector = $qResponse->embeddings[0]->embedding;
 
-        // 3. Filter Awal dengan Full-Text Search (Kecepatan)
+        if (!isset($embedResponse['data'][0]['embedding'])) {
+            return response()->json([
+                'jawaban' => 'Gagal membuat embedding pertanyaan.'
+            ], 500);
+        }
+
+        $questionVector = $embedResponse['data'][0]['embedding'];
+
+        // 3️⃣ Filter awal (FULLTEXT)
         $filteredData = LaravelKnowledge::query()
-            ->whereRaw("MATCH(content) AGAINST(? IN NATURAL LANGUAGE MODE)", [$userQuestion])
+            ->whereRaw(
+                "MATCH(content) AGAINST(? IN NATURAL LANGUAGE MODE)",
+                [$userQuestion]
+            )
             ->limit(50)
             ->get();
 
-        // 4. Ranking dengan Cosine Similarity (Akurasi)
+        // 4️⃣ Ranking cosine similarity
         $matches = $filteredData->map(function ($item) use ($questionVector, $aiService) {
-            $item->similarity = $aiService->cosineSimilarity($questionVector, $item->vector);
-            return $item;
-        })
-        ->filter(fn($item) => $item->similarity > 0.3) // THRESHOLD: Abaikan jika tidak nyambung
-        ->sortByDesc('similarity')
-        ->take(3);
+                $item->similarity = $aiService->cosineSimilarity(
+                    $questionVector,
+                    $item->vector
+                );
+                return $item;
+            })
+            ->filter(fn ($item) => $item->similarity > 0.3)
+            ->sortByDesc('similarity')
+            ->take(3)
+            ->values();
 
-        // 5. Siapkan Konteks untuk AI
-        $context = $matches->isEmpty() 
-            ? "TIDAK ADA REFERENSI RELEVAN DI DATABASE." 
+        // 5️⃣ Context
+        $context = $matches->isEmpty()
+            ? "TIDAK ADA REFERENSI RELEVAN DI DATABASE."
             : $matches->pluck('content')->implode("\n---\n");
 
-        // 6. Kirim ke Chat Model
-        $finalResponse = $client->chat()->create([
-            'model' => 'local-model',
+        // 6️⃣ Chat completion (MODEL CHAT)
+        $chatResponse = $client->chat()->create([
+            'model' => 'your-chat-model', // contoh: llama3, mistral, qwen
             'messages' => [
                 [
-                    'role' => 'system', 
-                    'content' => "Kamu adalah asisten Laravel. Jawablah HANYA berdasarkan referensi yang diberikan. " .
-                                 "Jika referensi bertuliskan 'TIDAK ADA REFERENSI', jawablah bahwa kamu tidak menemukan informasi tersebut di dokumentasi lokal."
+                    'role' => 'system',
+                    'content' =>
+                        "Kamu adalah Laravel AI Specialist. " .
+                        "Jawablah HANYA berdasarkan referensi berikut. " .
+                        "Jika referensi menyebut 'TIDAK ADA REFERENSI', katakan tidak ditemukan di dokumentasi."
                 ],
-                ['role' => 'user', 'content' => "REFERENSI:\n$context\n\nPERTANYAAN: $userQuestion"],
+                [
+                    'role' => 'user',
+                    'content' =>
+                        "REFERENSI:\n$context\n\nPERTANYAAN:\n$userQuestion"
+                ],
             ],
         ]);
 
+        $answer = $chatResponse['choices'][0]['message']['content']
+            ?? 'Tidak ada jawaban.';
+
         return response()->json([
-            'jawaban' => $finalResponse->choices[0]->message->content,
-            'source_count' => $matches->count(),
-            'top_similarity' => $matches->first() ? $matches->first()->similarity : 0
+            'jawaban'        => $answer,
+            'source_count'   => $matches->count(),
+            'top_similarity' => $matches->first()->similarity ?? 0,
         ]);
     }
 }
