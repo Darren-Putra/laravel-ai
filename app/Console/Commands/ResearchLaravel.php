@@ -39,12 +39,24 @@ class ResearchLaravel extends Command
         // ... (kode looping embedding kamu) ...
         foreach ($chunks as $index => $chunk) {
             try {
-                $response = OpenAI::embeddings()->create([
-                    'model' => 'text-embedding-3-small',
+                $response = OpenAI::client()->embeddings()->create([
+                    'model' => 'text-embedding-3-small', // atau model lokal kamu
                     'input' => $chunk,
                 ]);
-        
-                $embedding = $response->data[0]->embedding;
+                
+                if (
+                    !isset($response['data']) ||
+                    !isset($response['data'][0]) ||
+                    !isset($response['data'][0]['embedding'])
+                ) {
+                    $this->error('Response embedding tidak valid');
+                    $this->error(json_encode($response, JSON_PRETTY_PRINT));
+                    return 1;
+                }
+                
+                $embedding = $response['data'][0]['embedding'];
+                
+                
         
                 $newData[] = [
                     'url' => $url,
